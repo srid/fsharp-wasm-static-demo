@@ -1,0 +1,13 @@
+bin
+obj
+.ionide
+.vs
+*.user
+.fake
+out
+
+src/Baseline.*/Properties/**
+
+src/Baseline.CLI/*.db
+src/Baseline.Client/wwwroot/css/index.min.css
+src/Baseline.CLI/memstate.journal
