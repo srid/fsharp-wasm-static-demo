@@ -10,12 +10,10 @@ See [Blazor WebAssembly](https://docs.microsoft.com/en-ca/aspnet/core/blazor/?vi
 dotnet watch -p .\src\GitHubUser\GitHubUser.fsproj run --urls http://localhost:3000
 ```
 
-## Deploying to Linux
-
-Do a full build,
+## Full build
 
 ```
-dotnet publish -c Release -r linux-x64 --self-contained -o out
+dotnet publish -c Release --self-contained -o out
 ```
 
-Serve the `out/wwwroot` directory statically. It would be a SPA app with no backend.
+Serve the `out/wwwroot` directory statically using your web server of choice, or use GitHub Pages to deploy them directly from CI (see `.github/workflows/dotnet.yml` in this repo).
