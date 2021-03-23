@@ -60,9 +60,10 @@ let handleClick model dispatch _ =
 
 
 let view model dispatch =
-    div [] [
-        divClass "bg-green-200 p-1 m-1" [
-            text model.x
+    divClass "container mx-auto" [
+        elClass h1 "p-2 m-4 text-center text-4xl font-bold" [ text "GitHubUser"]
+        elClass p "rounded bg-gray-100 p-1 m-1" [
+            text "Enter the Github user you wish to query for, press TAB and hit ENTER (or click the button). "
         ]
         divClass "border-1 m-1 p-1" [
             ecomp<Input,_,_> [] {
@@ -77,6 +78,9 @@ let view model dispatch =
         ] [ 
             text (if model.loading then "..." else ("Get " + model.user))
         ]
+        divClass "font-mono bg-green-50 p-1 m-1" [
+            text model.x
+        ]
     ]
 
 type MyApp() =
@@ -87,7 +91,7 @@ type MyApp() =
 
     override this.Program =
         let initialModel = { 
-            x = "Welcome" 
+            x = "Nothing to show" 
             loading = false
             user = "srid"
             client = this.GitHubClient 
