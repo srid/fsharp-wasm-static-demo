@@ -5,35 +5,78 @@ open Bolero
 open Bolero.Html
 open System.Net.Http
 open Microsoft.AspNetCore.Components
+open Microsoft.JSInterop
+
+let elClass el cls children =
+    el [attr.``class`` cls] children
+
+let divClass =
+    elClass div
+type InputModel = { label: string; value: string }
+
+type Input() =
+    inherit ElmishComponent<InputModel, string>()
+
+    // Check for model changes by only looking at the value.
+    override this.ShouldRender(oldModel, newModel) =
+        oldModel.value <> newModel.value
+
+    override this.View model dispatch =
+        elClass label "py-1 pr-2" [
+            text model.label
+            input [
+                attr.value model.value
+                on.change (fun e -> dispatch (unbox e.Value))
+                attr.``class`` "border-2 p-1"
+            ]
+        ]
 
 type Model =
     {
         x: string
+        user: string
+        loading: bool
         client: HttpClient
     }
 type Message =
     | SetMessage of string
+    | SetUser of string
     | Loading 
 
 let update message model =
     match message with
-    | SetMessage s -> { model with x = s }
-    | Loading -> { model with x = "Doing something long ..." }
+    | SetMessage s -> { model with x = s; loading = false }
+    | SetUser s -> { model with user = s }
+    | Loading -> { model with x = "Doing something long ..."; loading = true }
 
 let handleClick model dispatch _ = 
-    dispatch Loading
+    Loading |> dispatch
     async {
-        let! resp = model.client.GetAsync "/users/srid" |> Async.AwaitTask
+        let reqPath = "/users/" + model.user
+        let! resp = model.client.GetAsync reqPath |> Async.AwaitTask
         let! s = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
-        dispatch (SetMessage s)
+        SetMessage s |> dispatch
     } |> Async.Start
+
 
 let view model dispatch =
     div [] [
-        div [attr.``class`` "bg-green-200"] [
+        divClass "bg-green-200 p-1 m-1" [
             text model.x
         ]
-        button [on.click (handleClick model dispatch)] [ text "Click me" ]
+        divClass "border-1 m-1 p-1" [
+            ecomp<Input,_,_> [] {
+                label = "Username"
+                value = model.user
+            } (fun s -> dispatch (SetUser s))
+        ]
+        button [
+            on.click (handleClick model dispatch)
+            attr.disabled (model.loading)
+            attr.``class`` "bg-red-500 text-white rounded p-1 m-1"
+        ] [ 
+            text (if model.loading then "..." else ("Get " + model.user))
+        ]
     ]
 
 type MyApp() =
@@ -43,4 +86,12 @@ type MyApp() =
     member val GitHubClient = Unchecked.defaultof<HttpClient> with get, set
 
     override this.Program =
-        Program.mkSimple (fun _ -> { x = "Start"; client = this.GitHubClient }) update view
+        let initialModel = { 
+            x = "Welcome" 
+            loading = false
+            user = "srid"
+            client = this.GitHubClient 
+        }
+        Program.mkSimple (fun _ -> initialModel) update view
+        |> Program.withTrace (fun msg model ->
+            this.JSRuntime.InvokeVoidAsync("console.log", msg, model) |> ignore)

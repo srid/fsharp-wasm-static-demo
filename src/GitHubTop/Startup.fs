@@ -9,8 +9,8 @@ module Program =
     [<EntryPoint>]
     let Main args =
         let builder = WebAssemblyHostBuilder.CreateDefault(args)
+        let githubClient = new HttpClient (BaseAddress=Uri("https://api.github.com"))
+        builder.Services.AddSingleton<HttpClient>(githubClient) |> ignore
         builder.RootComponents.Add<Main.MyApp>("#main")
-        let apiBase = Uri("https://api.github.com")
-        builder.Services.AddSingleton<HttpClient>(new HttpClient (BaseAddress=apiBase)) |> ignore
         builder.Build().RunAsync() |> ignore
         0
