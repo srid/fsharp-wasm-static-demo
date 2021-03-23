@@ -77,7 +77,7 @@ type UserCard() =
                             | Some "" -> user.html_url  // In case the user has nullfied this field
                             | Some x -> x
         let location = user.location |> Option.defaultValue "Earth"
-        let mapUrl = sprintf "https://www.bing.com/maps/?q=%s" location
+        let mapUrl = $"https://www.bing.com/maps/?q={location}"
         elClass figure "md:flex bg-gray-100 rounded-xl p-8 md:p-0" [
             img [
                 attr.``class`` "w-32 h-32 md:w-48 md:h-auto md:rounded-none rounded-full mx-auto"
@@ -91,11 +91,11 @@ type UserCard() =
                     text " lives in " 
                     aLink mapUrl [text location]
                     text " and has "
-                    aLink user.html_url [ text (sprintf "%d followers" user.followers) ]
+                    aLink user.html_url [ text $"{user.followers} followers" ]
                     br []
                     br []
                     divClass "font-mono text-xs text-gray-400" [
-                        text (sprintf "%A" user)
+                        text $"{user}"
                     ]
                 ]
             ]
@@ -123,7 +123,7 @@ type Message =
 
 let loadGitHubUser (client: HttpClient) userName = 
     async {
-        let reqPath = "/users/" + userName
+        let reqPath = $"/users/{userName}"
         let! resp = client.GetAsync reqPath |> Async.AwaitTask
         let! s = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
         match resp.StatusCode with 
@@ -131,7 +131,7 @@ let loadGitHubUser (client: HttpClient) userName =
             let user: User = JsonSerializer.Deserialize(s, options)
             return user 
         | _ -> 
-            let err = sprintf "Error(%A): %s" resp.StatusCode s
+            let err = $"Error({resp.StatusCode}): {s}"
             return raise (System.Exception err)
     } 
 
