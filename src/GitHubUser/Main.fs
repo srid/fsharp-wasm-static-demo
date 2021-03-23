@@ -103,11 +103,17 @@ type UserCard() =
 
 // App MVU
 
+// TODO: Switch to https://zaid-ajaj.github.io/Feliz/#/Hooks/UseDeferred
+type RemoteData<'T> =
+    | NotAskedFor
+    | Loading 
+    | Loaded of 'T
+    | LoadError of exn
+
 type Model =
     {
         userName: string
-        userInfo: Choice<User,exn> option
-        loading: bool
+        userInfo: RemoteData<User>
         client: HttpClient
     }
 type Message =
@@ -132,11 +138,11 @@ let loadGitHubUser (client: HttpClient) userName =
 let update message model =
     match message with
     | SetUserInfo i -> 
-        { model with userInfo = Some (Choice1Of2 i); loading = false }, Cmd.none
-    | SetUserError s -> 
-        { model with userInfo = Some (Choice2Of2 s); loading = false }, Cmd.none
+        { model with userInfo = Loaded i }, Cmd.none
+    | SetUserError e -> 
+        { model with userInfo = LoadError e }, Cmd.none
     | LoadUser s ->
-        { model with userName = s.Trim(); loading = true }
+        { model with userName = s.Trim(); userInfo = Loading }
         , Cmd.OfAsync.either (loadGitHubUser model.client) s SetUserInfo SetUserError
 
 let view model dispatch =
@@ -153,12 +159,12 @@ let view model dispatch =
                 value = model.userName
             } (fun s -> dispatch (LoadUser s))
         ]
-        match (model.loading, model.userInfo) with
-        | true, _ -> divClass "" [ text "Loading..." ]
-        | _, None -> divClass "" [text "No info yet"]
-        | _, Some (Choice1Of2 user) -> 
+        match model.userInfo with
+        | Loading -> divClass "" [ text "Loading..." ]
+        | NotAskedFor -> divClass "" [text "No info yet"]
+        | Loaded user -> 
             ecomp<UserCard,_,_> [] user (fun _ -> ())
-        | _, Some (Choice2Of2 err) -> 
+        | LoadError err -> 
             divClass "bg-red-200 overflow-x-auto p-1 text-xs" [
                 pre [] [text (err.ToString())]
             ]
@@ -172,9 +178,8 @@ type MyApp() =
 
     override this.Program =
         let initialModel = { 
-            loading = false
             userName = ""
-            userInfo = None
+            userInfo = NotAskedFor
             client = this.GitHubClient 
         }
         Program.mkProgram 
