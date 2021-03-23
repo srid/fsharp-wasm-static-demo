@@ -1,7 +1,5 @@
 A serverless [Bolero](https://fsbolero.io/) F# app demonstrating the use of [`HttpClient`](https://docs.microsoft.com/en-us/dotnet/api/system.net.http.httpclient?view=net-5.0) to interact with external APIs. Specifically it talks to GitHub to display the information for the given GitHub user.
 
-WIP
-
 ## Running locally
 
 ```

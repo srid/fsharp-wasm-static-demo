@@ -12,12 +12,10 @@ open System.Text.Json.Serialization
 
 // Json bootstrap
 // cf. https://github.com/fsbolero/website/pull/19
-
 let options = JsonSerializerOptions(IgnoreNullValues = true)
 options.Converters.Add(JsonFSharpConverter())
 
 // GitHub API User type
-
 [<JsonFSharpConverter>]
 type User =
     { login: string
@@ -104,44 +102,42 @@ type UserCard() =
             ]
 
 // App MVU
+
 type Model =
     {
-        user: string
-        userInfo: Choice<User,string> option
+        userName: string
+        userInfo: Choice<User,exn> option
         loading: bool
         client: HttpClient
     }
 type Message =
+    | LoadUser of string
     | SetUserInfo of User
-    | SetUserError of string
-    | SetUser of string
-    | Loading 
+    | SetUserError of exn
 
-let update message model =
-    match message with
-    | SetUserInfo i -> { model with userInfo = Some (Choice1Of2 i); loading = false }
-    | SetUserError s -> { model with userInfo = Some (Choice2Of2 s); loading = false }
-    | SetUser s -> { model with user = s.Trim() }
-    | Loading -> { model with loading = true }
-
-let loadUser (client: HttpClient) dispatch userName = 
-    Loading |> dispatch
+let loadGitHubUser (client: HttpClient) userName = 
     async {
         let reqPath = "/users/" + userName
         let! resp = client.GetAsync reqPath |> Async.AwaitTask
+        let! s = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
         match resp.StatusCode with 
         | HttpStatusCode.OK -> 
-            let! s = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
-            try 
-                let user = JsonSerializer.Deserialize(s, options)
-                SetUserInfo user |> dispatch
-            with 
-                | ex ->
-                SetUserError (ex.ToString()) |> dispatch
+            let user: User = JsonSerializer.Deserialize(s, options)
+            return user 
         | _ -> 
-            let! s = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
-            SetUserError (sprintf "Error(%A): %s" resp.StatusCode s) |> dispatch
-    } |> Async.Start
+            let err = sprintf "Error(%A): %s" resp.StatusCode s
+            return raise (System.Exception err)
+    } 
+
+let update message model =
+    match message with
+    | SetUserInfo i -> 
+        { model with userInfo = Some (Choice1Of2 i); loading = false }, Cmd.none
+    | SetUserError s -> 
+        { model with userInfo = Some (Choice2Of2 s); loading = false }, Cmd.none
+    | LoadUser s ->
+        { model with userName = s.Trim(); loading = true }
+        , Cmd.OfAsync.either (loadGitHubUser model.client) s SetUserInfo SetUserError
 
 let view model dispatch =
     divClass "container mx-auto px-4" [
@@ -149,20 +145,23 @@ let view model dispatch =
             aLink "https://github.com/srid/GitHubUser" [text "GitHubUser"]
         ]
         elClass p "" [
-            text "Enter the Github username (eg: srid) you wish to query for and hit ENTER."
+            text "Enter the Github username you wish to query for and hit ENTER."
         ]
         divClass "border-1 my-1 py-1" [
             ecomp<Input,_,_> [] {
                 label = "Username"
-                value = model.user
-            } (fun s -> loadUser model.client dispatch s)
+                value = model.userName
+            } (fun s -> dispatch (LoadUser s))
         ]
         match (model.loading, model.userInfo) with
         | true, _ -> divClass "" [ text "Loading..." ]
         | _, None -> divClass "" [text "No info yet"]
-        | _, Some (Choice2Of2 err) -> divClass "bg-red-200" [pre [] [text err]]
         | _, Some (Choice1Of2 user) -> 
             ecomp<UserCard,_,_> [] user (fun _ -> ())
+        | _, Some (Choice2Of2 err) -> 
+            divClass "bg-red-200 overflow-x-auto p-1 text-xs" [
+                pre [] [text (err.ToString())]
+            ]
     ]
 
 type MyApp() =
@@ -174,10 +173,13 @@ type MyApp() =
     override this.Program =
         let initialModel = { 
             loading = false
-            user = ""
+            userName = ""
             userInfo = None
             client = this.GitHubClient 
         }
-        Program.mkSimple (fun _ -> initialModel) update view
+        Program.mkProgram 
+            (fun _ -> initialModel, Cmd.ofMsg (LoadUser "srid")) 
+            update 
+            view
         |> Program.withTrace (fun msg model ->
             this.JSRuntime.InvokeVoidAsync("console.log", msg, model) |> ignore)
