@@ -5,7 +5,7 @@ WIP
 ## Running locally
 
 ```
-dotnet watch -p .\src\GitHubTop.Client\GitHubTop.Client.fsproj run --urls http://localhost:3000
+dotnet watch -p .\src\GitHubTop\GitHubTop.fsproj run --urls http://localhost:3000
 ```
 
 ## Deploying to Linux
@@ -16,5 +16,5 @@ Do a full build,
 dotnet publish -c Release -r linux-x64 --self-contained
 ```
 
-Serve the `.\src\GitHubTop.Client\bin\Release\net5.0\publish\wwwroot\` directory statically. It would be a SPA app with no backend.
+Serve the `.\src\GitHubTop\bin\Release\net5.0\publish\wwwroot\` directory statically. It would be a SPA app with no backend.
 
