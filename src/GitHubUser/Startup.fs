@@ -1,4 +1,4 @@
-namespace Single.Client
+namespace GitHubUser
 
 open Microsoft.AspNetCore.Components.WebAssembly.Hosting
 open Microsoft.Extensions.DependencyInjection

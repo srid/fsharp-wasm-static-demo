@@ -15,7 +15,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Single.Client": {
+    "GitHubUser": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {

@@ -1,4 +1,4 @@
-module Single.Client.Main
+module GitHubUser.Main
 
 open Elmish
 open Bolero
