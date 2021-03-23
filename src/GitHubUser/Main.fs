@@ -4,6 +4,7 @@ open Elmish
 open Bolero
 open Bolero.Html
 open System.Net.Http
+open System.Net
 open Microsoft.AspNetCore.Components
 open Microsoft.JSInterop
 open System.Text.Json
@@ -12,7 +13,7 @@ open System.Text.Json.Serialization
 // Json bootstrap
 // cf. https://github.com/fsbolero/website/pull/19
 
-let options = JsonSerializerOptions()
+let options = JsonSerializerOptions(IgnoreNullValues = true)
 options.Converters.Add(JsonFSharpConverter())
 
 // GitHub API User type
@@ -21,10 +22,10 @@ options.Converters.Add(JsonFSharpConverter())
 type User =
     { login: string
       id: int
-      name: string
-      company: string
-      blog: string
-      location: string
+      name: string option
+      company: string option
+      blog: string option
+      location: string option
       followers: int
       following: int
       avatar_url: string
@@ -69,65 +70,77 @@ type Input() =
 
 // GitHub User card Elmish component
 type UserCard() =
-    inherit ElmishComponent<User option, User option>()
+    inherit ElmishComponent<User, User option>()
 
-    override this.View model dispatch = 
-        concat [
-            match model with
-            | None -> divClass "" [text "No info yet"]
-            | Some user ->
-                let mapUrl = sprintf "https://www.bing.com/maps/?q=%s" user.location
-                elClass figure "md:flex bg-gray-100 rounded-xl p-8 md:p-0" [
-                    img [
-                        attr.``class`` "w-32 h-32 md:w-48 md:h-auto md:rounded-none rounded-full mx-auto"
-                        attr.width 284
-                        attr.height 512
-                        attr.src user.avatar_url
-                    ]
-                    divClass "pt-6 md:p-8 text-center md:text-left space-y-4" [
-                        blockquote [] [
-                            b [] [aLink user.blog [text user.name]]
-                            text " lives in " 
-                            aLink mapUrl [text user.location]
-                            text " and has "
-                            aLink user.html_url [ text (sprintf "%d followers" user.followers) ]
-                            br []
-                            br []
-                            divClass "font-mono text-xs text-gray-400" [
-                                text (sprintf "%A" model)
-                            ]
-                        ]
+    override this.View user dispatch = 
+        let userName = user.name |> Option.defaultValue user.login
+        let userWebUrl = match user.blog with 
+                            | None -> user.html_url
+                            | Some "" -> user.html_url  // In case the user has nullfied this field
+                            | Some x -> x
+        let location = user.location |> Option.defaultValue "Earth"
+        let mapUrl = sprintf "https://www.bing.com/maps/?q=%s" location
+        elClass figure "md:flex bg-gray-100 rounded-xl p-8 md:p-0" [
+            img [
+                attr.``class`` "w-32 h-32 md:w-48 md:h-auto md:rounded-none rounded-full mx-auto"
+                attr.width 284
+                attr.height 512
+                attr.src user.avatar_url
+            ]
+            divClass "pt-6 md:p-8 text-center md:text-left space-y-4" [
+                blockquote [] [
+                    b [] [aLink userWebUrl [text userName]]
+                    text " lives in " 
+                    aLink mapUrl [text location]
+                    text " and has "
+                    aLink user.html_url [ text (sprintf "%d followers" user.followers) ]
+                    br []
+                    br []
+                    divClass "font-mono text-xs text-gray-400" [
+                        text (sprintf "%A" user)
                     ]
                 ]
-        ]
+            ]
+            ]
 
 // App MVU
 type Model =
     {
-        userInfo: User option
         user: string
+        userInfo: Choice<User,string> option
         loading: bool
         client: HttpClient
     }
 type Message =
     | SetUserInfo of User
+    | SetUserError of string
     | SetUser of string
     | Loading 
 
 let update message model =
     match message with
-    | SetUserInfo i -> { model with userInfo = Some i; loading = false }
-    | SetUser s -> { model with user = s }
+    | SetUserInfo i -> { model with userInfo = Some (Choice1Of2 i); loading = false }
+    | SetUserError s -> { model with userInfo = Some (Choice2Of2 s); loading = false }
+    | SetUser s -> { model with user = s.Trim() }
     | Loading -> { model with loading = true }
 
-let handleClick model dispatch _ = 
+let loadUser (client: HttpClient) dispatch userName = 
     Loading |> dispatch
     async {
-        let reqPath = "/users/" + model.user
-        let! resp = model.client.GetAsync reqPath |> Async.AwaitTask
-        let! s = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
-        let userInfo = JsonSerializer.Deserialize s
-        SetUserInfo userInfo |> dispatch
+        let reqPath = "/users/" + userName
+        let! resp = client.GetAsync reqPath |> Async.AwaitTask
+        match resp.StatusCode with 
+        | HttpStatusCode.OK -> 
+            let! s = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
+            try 
+                let user = JsonSerializer.Deserialize(s, options)
+                SetUserInfo user |> dispatch
+            with 
+                | ex ->
+                SetUserError (ex.ToString()) |> dispatch
+        | _ -> 
+            let! s = resp.Content.ReadAsStringAsync() |> Async.AwaitTask
+            SetUserError (sprintf "Error(%A): %s" resp.StatusCode s) |> dispatch
     } |> Async.Start
 
 let view model dispatch =
@@ -136,22 +149,20 @@ let view model dispatch =
             aLink "https://github.com/srid/GitHubUser" [text "GitHubUser"]
         ]
         elClass p "" [
-            text "Enter the Github user you wish to query for, press TAB and hit ENTER (or click the button). "
+            text "Enter the Github username (eg: srid) you wish to query for and hit ENTER."
         ]
         divClass "border-1 my-1 py-1" [
             ecomp<Input,_,_> [] {
                 label = "Username"
                 value = model.user
-            } (fun s -> dispatch (SetUser s))
+            } (fun s -> loadUser model.client dispatch s)
         ]
-        button [
-            on.click (handleClick model dispatch)
-            attr.disabled (model.loading)
-            attr.``class`` "bg-purple-500 text-white rounded p-1 hover:bg-green-500 my-1"
-        ] [ 
-            text (if model.loading then "..." else ("Get " + model.user))
-        ]
-        ecomp<UserCard,_,_> [] model.userInfo (fun _ -> ())
+        match (model.loading, model.userInfo) with
+        | true, _ -> divClass "" [ text "Loading..." ]
+        | _, None -> divClass "" [text "No info yet"]
+        | _, Some (Choice2Of2 err) -> divClass "bg-red-200" [pre [] [text err]]
+        | _, Some (Choice1Of2 user) -> 
+            ecomp<UserCard,_,_> [] user (fun _ -> ())
     ]
 
 type MyApp() =
@@ -163,7 +174,7 @@ type MyApp() =
     override this.Program =
         let initialModel = { 
             loading = false
-            user = "srid"
+            user = ""
             userInfo = None
             client = this.GitHubClient 
         }
