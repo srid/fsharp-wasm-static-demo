@@ -16,7 +16,6 @@ let options = JsonSerializerOptions(IgnoreNullValues = true)
 options.Converters.Add(JsonFSharpConverter())
 
 // GitHub API User type
-[<JsonFSharpConverter>]
 type User =
     { login: string
       id: int
@@ -99,7 +98,7 @@ type UserCard() =
                     ]
                 ]
             ]
-            ]
+        ]
 
 // App MVU
 
@@ -110,6 +109,11 @@ type RemoteData<'T> =
     | Loaded of 'T
     | LoadError of exn
 
+type RemoteDataMessage<'T,'Key> =
+    | LoadData of 'Key
+    | SetLoadedData of 'T
+    | SetLoadError of exn
+
 type Model =
     {
         userName: string
@@ -117,9 +121,7 @@ type Model =
         client: HttpClient
     }
 type Message =
-    | LoadUser of string
-    | SetUserInfo of User
-    | SetUserError of exn
+    | GitHubUserMessage of RemoteDataMessage<User, string>
 
 let loadGitHubUser (client: HttpClient) userName = 
     async {
@@ -135,15 +137,19 @@ let loadGitHubUser (client: HttpClient) userName =
             return raise (System.Exception err)
     } 
 
-let update message model =
-    match message with
-    | SetUserInfo i -> 
+let update (GitHubUserMessage remoteDataMsg) model =
+    match remoteDataMsg with
+    | SetLoadedData i -> 
         { model with userInfo = Loaded i }, Cmd.none
-    | SetUserError e -> 
+    | SetLoadError e -> 
         { model with userInfo = LoadError e }, Cmd.none
-    | LoadUser s ->
+    | LoadData s ->
         { model with userName = s.Trim(); userInfo = Loading }
-        , Cmd.OfAsync.either (loadGitHubUser model.client) s SetUserInfo SetUserError
+        , Cmd.OfAsync.either 
+            (loadGitHubUser model.client) 
+            s 
+            (GitHubUserMessage << SetLoadedData)
+            (GitHubUserMessage << SetLoadError)
 
 let view model dispatch =
     divClass "container mx-auto px-4" [
@@ -157,7 +163,7 @@ let view model dispatch =
             ecomp<Input,_,_> [] {
                 label = "Username"
                 value = model.userName
-            } (fun s -> dispatch (LoadUser s))
+            } (fun s -> dispatch ((GitHubUserMessage << LoadData) s))
         ]
         match model.userInfo with
         | Loading -> divClass "" [ text "Loading..." ]
@@ -183,7 +189,7 @@ type MyApp() =
             client = this.GitHubClient 
         }
         Program.mkProgram 
-            (fun _ -> initialModel, Cmd.ofMsg (LoadUser "srid")) 
+            (fun _ -> initialModel, Cmd.ofMsg (GitHubUserMessage (LoadData "srid")) )
             update 
             view
         |> Program.withTrace (fun msg model ->
